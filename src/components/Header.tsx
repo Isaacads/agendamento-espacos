@@ -22,7 +22,7 @@ export default function Header() {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-2">
             <img src={logoCead} alt="Logo CEAD" className="h-10 w-auto" />
-            <span className="text-xl font-bold text-gray-900 truncate">Agenda de Espaços</span>
+            <span className="text-xl font-bold text-gray-900 truncate">Agenda de Recursos</span>
           </div>
 
           {/* Desktop Navigation */}
@@ -34,7 +34,7 @@ export default function Header() {
               {profile?.role === 'admin' && (
                 <>
                   <Link to="/spaces" className="text-gray-600 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
-                    Espaços
+                    Recursos
                   </Link>
                   <Link to="/admin" className="text-gray-600 hover:text-primary-600 px-3 py-2 rounded-md text-sm font-medium transition-colors">
                     Professores
@@ -86,7 +86,7 @@ export default function Header() {
                   onClick={closeMenu}
                   className="block text-gray-600 hover:text-primary-600 px-3 py-2 rounded-md text-base font-medium"
                 >
-                  Espaços
+                  Recursos
                 </Link>
                 <Link 
                   to="/admin" 

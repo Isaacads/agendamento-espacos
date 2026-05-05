@@ -11,12 +11,12 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  Filter,
+  Search,
   CheckCircle2,
   XCircle
 } from 'lucide-react';
 import { api } from '../lib/api';
-import type { Space, Schedule, Profile } from '../types';
+import type { Equipment, Profile, Schedule, Space } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 const TIME_SLOTS = [
@@ -34,44 +34,97 @@ const TIME_SLOTS = [
 
 export default function Dashboard() {
   const { user, profile } = useAuth();
+  const [activeTab, setActiveTab] = useState<'spaces' | 'equipments'>('spaces');
   const [date, setDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const [spaces, setSpaces] = useState<Space[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [bookings, setBookings] = useState<
+    Array<{
+      id: string;
+      resource_id: string;
+      professor_name: string;
+      user_id: string;
+      date: string;
+      start_time: string;
+      end_time: string;
+    }>
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedSpaceId, setExpandedSpaceId] = useState<string | null>(null);
+  const [expandedResourceId, setExpandedResourceId] = useState<string | null>(null);
 
   // Refs
   const dateInputRef = useRef<HTMLInputElement>(null);
 
-  // Filter state
-  const [filterProfessor, setFilterProfessor] = useState('');
+  const [searchResource, setSearchResource] = useState('');
 
   // Form State
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<typeof TIME_SLOTS[0] | null>(null);
-  const [selectedSpaceId, setSelectedSpaceId] = useState('');
+  const [selectedResourceId, setSelectedResourceId] = useState('');
   const [professorName, setProfessorName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
-  }, [date]);
+  }, [date, activeTab]);
+
+  useEffect(() => {
+    setExpandedResourceId(null);
+    setIsFormOpen(false);
+    setSelectedResourceId('');
+    setSelectedSlot(null);
+    setFormError(null);
+  }, [activeTab]);
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [spacesData, schedulesData, profilesData] = await Promise.all([
-        api.getSpaces(),
-        api.getSchedulesByDate(date),
-        api.getProfiles()
+      const profilesPromise = api.getProfiles();
+
+      if (activeTab === 'spaces') {
+        const [spacesData, schedulesData, profilesData] = await Promise.all([
+          api.getSpaces(),
+          api.getSchedulesByDate(date),
+          profilesPromise
+        ]);
+        setSpaces(spacesData);
+        setProfiles(profilesData);
+        setBookings(
+          schedulesData.map((s: Schedule) => ({
+            id: s.id,
+            resource_id: s.space_id,
+            professor_name: s.professor_name,
+            user_id: s.user_id,
+            date: s.date,
+            start_time: s.start_time,
+            end_time: s.end_time
+          }))
+        );
+        return;
+      }
+
+      const [equipmentsData, equipmentSchedulesData, profilesData] = await Promise.all([
+        api.getEquipments(),
+        api.getEquipmentSchedulesByDate(date),
+        profilesPromise
       ]);
-      setSpaces(spacesData);
-      setSchedules(schedulesData);
+      setEquipments(equipmentsData);
       setProfiles(profilesData);
+      setBookings(
+        equipmentSchedulesData.map(s => ({
+          id: s.id,
+          resource_id: s.equipment_id,
+          professor_name: s.professor_name,
+          user_id: s.user_id,
+          date: s.date,
+          start_time: s.start_time,
+          end_time: s.end_time
+        }))
+      );
     } catch (err: any) {
       setError(err.message || 'Erro ao carregar dados');
     } finally {
@@ -79,9 +132,9 @@ export default function Dashboard() {
     }
   };
 
-  const handleBookingClick = (spaceId: string, slot: typeof TIME_SLOTS[0]) => {
+  const handleBookingClick = (resourceId: string, slot: typeof TIME_SLOTS[0]) => {
     if (slot.isBreak) return;
-    setSelectedSpaceId(spaceId);
+    setSelectedResourceId(resourceId);
     setSelectedSlot(slot);
     setProfessorName(profile?.name || '');
     setIsFormOpen(true);
@@ -89,7 +142,7 @@ export default function Dashboard() {
 
   const handleAddSchedule = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedSlot || !selectedSpaceId || !professorName.trim()) return;
+    if (!selectedSlot || !selectedResourceId || !professorName.trim()) return;
 
     setSubmitting(true);
     setFormError(null);
@@ -104,14 +157,25 @@ export default function Dashboard() {
     }
 
     try {
-      await api.addSchedule({
-        space_id: selectedSpaceId,
-        professor_name: professorName,
-        user_id: targetUserId || '',
-        date,
-        start_time: selectedSlot.start,
-        end_time: selectedSlot.end,
-      });
+      if (activeTab === 'spaces') {
+        await api.addSchedule({
+          space_id: selectedResourceId,
+          professor_name: professorName,
+          user_id: targetUserId || '',
+          date,
+          start_time: selectedSlot.start,
+          end_time: selectedSlot.end
+        });
+      } else {
+        await api.addEquipmentSchedule({
+          equipment_id: selectedResourceId,
+          professor_name: professorName,
+          user_id: targetUserId || '',
+          date,
+          start_time: selectedSlot.start,
+          end_time: selectedSlot.end
+        });
+      }
       await loadData();
       setIsFormOpen(false);
       setProfessorName('');
@@ -124,7 +188,11 @@ export default function Dashboard() {
 
   const handleDelete = async (id: string) => {
     try {
-      await api.deleteSchedule(id);
+      if (activeTab === 'spaces') {
+        await api.deleteSchedule(id);
+      } else {
+        await api.deleteEquipmentSchedule(id);
+      }
       await loadData();
     } catch (err: any) {
       alert(err.message || 'Erro ao excluir');
@@ -137,12 +205,43 @@ export default function Dashboard() {
     setDate(format(d, 'yyyy-MM-dd'));
   };
 
-  const filteredSchedules = schedules.filter(s => 
-    s.professor_name.toLowerCase().includes(filterProfessor.toLowerCase())
+  const filteredBookings = bookings;
+
+  const resources = activeTab === 'spaces' ? spaces : equipments;
+  const filteredResources = resources.filter(r =>
+    r.name.toLowerCase().includes(searchResource.trim().toLowerCase())
   );
+  const selectedResourceName = resources.find(r => r.id === selectedResourceId)?.name;
 
   return (
     <div className="space-y-4 md:space-y-6">
+      <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-100">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveTab('spaces')}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition border ${
+              activeTab === 'spaces'
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Agendamento de espaços
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('equipments')}
+            className={`flex-1 px-3 py-2 rounded-lg text-sm font-semibold transition border ${
+              activeTab === 'equipments'
+                ? 'bg-primary-600 text-white border-primary-600'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            Agendamento de equipamentos
+          </button>
+        </div>
+      </div>
+
       {/* Header with Date Navigation and Filters */}
       <div className="bg-white p-3 md:p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center justify-center md:justify-start gap-2">
@@ -190,12 +289,12 @@ export default function Dashboard() {
 
         <div className="flex items-center gap-3 w-full lg:w-auto">
           <div className="relative flex-1 lg:w-64">
-            <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
               type="text"
-              placeholder="Filtrar por professor..."
-              value={filterProfessor}
-              onChange={(e) => setFilterProfessor(e.target.value)}
+              placeholder={activeTab === 'spaces' ? 'Buscar espaço...' : 'Buscar equipamento...'}
+              value={searchResource}
+              onChange={(e) => setSearchResource(e.target.value)}
               className="pl-9 pr-4 py-2 w-full border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
             />
           </div>
@@ -215,15 +314,15 @@ export default function Dashboard() {
       ) : (
         <div className="pb-4">
           <div className="grid gap-4 md:gap-6 grid-cols-1 lg:grid-cols-2 items-start">
-            {spaces.map(space => {
-              const spaceSchedules = filteredSchedules.filter(s => s.space_id === space.id);
+            {filteredResources.map(resource => {
+              const resourceBookings = filteredBookings.filter(b => b.resource_id === resource.id);
               
-              const isExpanded = expandedSpaceId === space.id;
+              const isExpanded = expandedResourceId === resource.id;
               
               return (
-                <div key={space.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200">
+                <div key={resource.id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-all duration-200">
                   <button 
-                    onClick={() => setExpandedSpaceId(isExpanded ? null : space.id)}
+                    onClick={() => setExpandedResourceId(isExpanded ? null : resource.id)}
                     className={`w-full text-left px-4 md:px-5 py-3 md:py-4 flex justify-between items-center transition-colors ${
                       isExpanded ? 'bg-primary-50/50 border-b border-gray-200' : 'bg-gray-50 hover:bg-gray-100'
                     }`}
@@ -232,10 +331,10 @@ export default function Dashboard() {
                       <div className={`p-1.5 md:p-2 rounded-lg transition-colors ${isExpanded ? 'bg-primary-100 text-primary-700' : 'bg-white text-gray-500 border'}`}>
                         <Clock className="h-4 w-4 md:h-5 md:w-5" />
                       </div>
-                      <h3 className="font-bold text-base md:text-lg text-gray-800 truncate max-w-[150px] sm:max-w-none">{space.name}</h3>
+                      <h3 className="font-bold text-base md:text-lg text-gray-800 truncate max-w-[150px] sm:max-w-none">{resource.name}</h3>
                     </div>
                     <div className="flex items-center gap-2 md:gap-4">
-                      <span className="hidden sm:inline-block text-xs font-medium text-gray-400 bg-white px-2 py-1 rounded-full border">
+                      <span className="hidden sm:inline-block text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded-full border">
                         {isExpanded ? 'Recolher' : 'Ver horários'}
                       </span>
                       {isExpanded ? (
@@ -249,18 +348,18 @@ export default function Dashboard() {
                   {isExpanded && (
                     <div className="divide-y divide-gray-100 animate-in slide-in-from-top-2 duration-200">
                       {TIME_SLOTS.map((slot, idx) => {
-                        const booking = spaceSchedules.find(s => 
-                          s.start_time.substring(0, 5) === slot.start
+                        const booking = resourceBookings.find(b =>
+                          b.start_time.substring(0, 5) === slot.start
                         );
                         
                         if (slot.isBreak) {
                           return (
                             <div key={idx} className="px-4 md:px-5 py-2 bg-gray-50/50 flex items-center gap-3 md:gap-4">
-                              <span className="text-[10px] md:text-xs font-bold text-gray-400 w-20 md:w-24 text-center italic shrink-0">
+                              <span className="text-xs md:text-sm font-semibold text-gray-500 w-20 md:w-24 text-center shrink-0">
                                 {slot.start} - {slot.end}
                               </span>
                               <div className="h-px flex-1 bg-gray-200"></div>
-                              <span className="text-[9px] md:text-[10px] uppercase tracking-wider text-gray-400 font-bold whitespace-nowrap">
+                              <span className="text-[10px] md:text-xs uppercase tracking-wider text-gray-500 font-semibold whitespace-nowrap">
                                 {slot.label}
                               </span>
                               <div className="h-px flex-1 bg-gray-200"></div>
@@ -276,8 +375,8 @@ export default function Dashboard() {
                             }`}
                           >
                             <div className="w-20 md:w-24 flex flex-col items-center shrink-0">
-                              <span className="text-[10px] md:text-xs font-bold text-gray-500">{slot.start} - {slot.end}</span>
-                              <span className="text-[8px] md:text-[10px] text-gray-400 uppercase">{slot.label}</span>
+                              <span className="text-xs md:text-sm font-bold text-gray-700">{slot.start} - {slot.end}</span>
+                              <span className="text-[10px] md:text-xs text-gray-500 font-semibold uppercase">{slot.label}</span>
                             </div>
 
                             <div className="flex-1 min-w-0">
@@ -303,11 +402,11 @@ export default function Dashboard() {
                                 </div>
                               ) : (
                                 <button 
-                                  onClick={() => handleBookingClick(space.id, slot)}
-                                  className="group flex items-center gap-2 text-gray-400 hover:text-primary-600 transition w-full text-left"
+                                  onClick={() => handleBookingClick(resource.id, slot)}
+                                  className="group flex items-center gap-2 text-gray-600 hover:text-primary-700 transition w-full text-left"
                                 >
-                                  <PlusCircle className="h-3.5 w-3.5 md:h-4 md:w-4 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  <span className="text-xs md:text-sm italic truncate">Disponível - Clique</span>
+                                  <PlusCircle className="h-4 w-4 md:h-5 md:w-5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity" />
+                                  <span className="text-sm md:text-base font-medium truncate">Disponível - Clique</span>
                                 </button>
                               )}
                             </div>
@@ -330,7 +429,7 @@ export default function Dashboard() {
             <div className="bg-primary-600 p-4 md:p-6 text-white">
               <h2 className="text-lg md:text-xl font-bold">Novo Agendamento</h2>
               <p className="text-primary-100 text-xs md:text-sm mt-1 truncate">
-                {spaces.find(s => s.id === selectedSpaceId)?.name}
+                {selectedResourceName}
               </p>
             </div>
             
