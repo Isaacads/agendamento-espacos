@@ -31,10 +31,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setLoading(false);
       }
+    }).catch(async () => {
+      await supabase.auth.signOut({ scope: 'local' });
+      setUser(null);
+      setProfile(null);
+      setLoading(false);
     });
 
     // Escutar mudanças de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'TOKEN_REFRESH_FAILED') {
+        await supabase.auth.signOut({ scope: 'local' });
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);

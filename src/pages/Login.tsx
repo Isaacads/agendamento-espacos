@@ -2,30 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { School, AlertCircle } from 'lucide-react';
-
-const assetUrls = import.meta.glob('../assets/**/*.{png,jpg,jpeg,svg,webp}', {
-  eager: true,
-  query: '?url',
-  import: 'default'
-}) as Record<string, string>;
-
-const loginLogoUrl =
-  assetUrls['../assets/LogoSisten.png'] ||
-  assetUrls['../assets/LogoSisten.jpg'] ||
-  assetUrls['../assets/LogoSisten.jpeg'] ||
-  assetUrls['../assets/LogoSisten.svg'] ||
-  assetUrls['../assets/img/LogoSisten.png'] ||
-  assetUrls['../assets/img/LogoSisten.jpg'] ||
-  assetUrls['../assets/img/LogoSisten.jpeg'] ||
-  assetUrls['../assets/img/LogoSisten.svg'];
+import logoSisten from '../assets/LogoSisten.png';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logoFailed, setLogoFailed] = useState(false);
   
   const navigate = useNavigate();
+  const logoUrl = logoSisten;
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,12 +36,17 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
-        {loginLogoUrl ? (
-          <img src={loginLogoUrl} alt="Logo do Sistema" className="mx-auto h-14 w-auto" />
+        {!logoFailed ? (
+          <img
+            src={logoUrl}
+            alt="Logo do Sistema"
+            className="mx-auto h-24 sm:h-28 w-auto"
+            onError={() => setLogoFailed(true)}
+          />
         ) : (
           <School className="mx-auto h-12 w-12 text-primary-600" />
         )}
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
+        <h2 className="-mt-1 text-center text-3xl font-extrabold text-gray-900">
           Entrar no Sistema
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
