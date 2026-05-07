@@ -39,14 +39,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Escutar mudanças de autenticação
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'TOKEN_REFRESH_FAILED') {
-        await supabase.auth.signOut({ scope: 'local' });
-        setUser(null);
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
